@@ -178,7 +178,6 @@ void init(char *argv[], int argc)
 	}
 }
 
-
 uint16_t checksum(uint16_t *data, size_t length)
 {
 	unsigned long checksum = 0;
