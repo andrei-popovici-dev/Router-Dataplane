@@ -11,6 +11,14 @@
 #define ARP_REQUEST 1
 #define ARP_REPLY 2
 
+#define ARP_ETH_TYPE 1
+#define ARP_PROT_IP_TYPE 0x0800
+
+//Sizes (for ARP)
+
+#define IP_SIZE 4
+#define MAC_SIZE 6
+
 /* Ethernet ARP packet from RFC 826 */
 struct arp_hdr {
 	uint16_t hw_type;   /* Format of hardware address */

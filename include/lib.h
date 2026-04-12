@@ -96,6 +96,12 @@ int read_rtable(const char *path, struct route_table_entry *rtable);
  * */
 int parse_arp_table(char *path, struct arp_table_entry *arp_table);
 
+/* Gets MAC entry based on given_ip
+*/
+struct arp_table_entry *get_mac_entry(uint32_t given_ip, struct arp_table_entry* mac_table, int mac_table_len);
+
+char* make_arp_reply(uint8_t* mac_src, uint32_t ip_src, uint8_t* mac_dest, uint32_t ip_dest);
+
 void init(char *argv[], int argc);
 
 #define DIE(condition, message, ...) \

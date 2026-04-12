@@ -16,6 +16,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "protocols.h"
 
 
 int interfaces[ROUTER_NUM_INTERFACES];
@@ -245,3 +246,36 @@ int parse_arp_table(char *path, struct arp_table_entry *arp_table)
 	fprintf(stderr, "Done parsing ARP table.\n");
 	return i;
 }
+
+struct arp_table_entry *get_mac_entry(uint32_t given_ip, struct arp_table_entry* mac_table, int mac_table_len) {
+	for(int i = 0; i < mac_table_len; i++){
+		if(mac_table[i].ip == given_ip) {
+			return &mac_table[i];
+		}
+	}
+	return NULL;
+}
+
+char* make_arp_reply(uint8_t* mac_src, uint32_t ip_src, uint8_t* mac_dest, uint32_t ip_dest) {
+	char *buf = calloc(1, sizeof(struct ether_hdr) + sizeof(struct arp_hdr));
+
+	struct ether_hdr *ether_hdr = (struct ether_hdr* )buf;
+	struct arp_hdr *arp_hdr = (struct arp_hdr* )(buf + sizeof(struct ether_hdr));
+
+	arp_hdr->opcode = htons(ARP_REPLY); 
+	arp_hdr->hw_type = htons(ARP_ETH_TYPE);
+	arp_hdr->hw_len = MAC_SIZE;
+	arp_hdr->proto_type = htons(ARP_PROT_IP_TYPE);
+	arp_hdr->proto_len = IP_SIZE;
+	memcpy(arp_hdr->shwa, mac_src, MAC_SIZE);
+	memcpy(arp_hdr->thwa, mac_dest, MAC_SIZE);
+	arp_hdr->sprotoa = ip_src;
+	arp_hdr->tprotoa = ip_dest;
+
+	memcpy(ether_hdr->ethr_dhost, mac_dest, MAC_SIZE);
+	memcpy(ether_hdr->ethr_shost, mac_src, MAC_SIZE);
+	ether_hdr->ethr_type = htons(ARP_ETHERTYPE);
+
+	return buf;
+}
+
