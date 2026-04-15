@@ -256,13 +256,13 @@ struct arp_table_entry *get_mac_entry(uint32_t given_ip, struct arp_table_entry*
 	return NULL;
 }
 
-char* make_arp_reply(uint8_t* mac_src, uint32_t ip_src, uint8_t* mac_dest, uint32_t ip_dest) {
+char* make_arp_msg(uint8_t* mac_src, uint32_t ip_src, uint8_t* mac_dest, uint32_t ip_dest, uint16_t opcode) {
 	char *buf = calloc(1, sizeof(struct ether_hdr) + sizeof(struct arp_hdr));
 
 	struct ether_hdr *ether_hdr = (struct ether_hdr* )buf;
 	struct arp_hdr *arp_hdr = (struct arp_hdr* )(buf + sizeof(struct ether_hdr));
 
-	arp_hdr->opcode = htons(ARP_REPLY); 
+	arp_hdr->opcode = htons(opcode); 
 	arp_hdr->hw_type = htons(ARP_ETH_TYPE);
 	arp_hdr->hw_len = MAC_SIZE;
 	arp_hdr->proto_type = htons(ARP_PROT_IP_TYPE);
@@ -278,4 +278,3 @@ char* make_arp_reply(uint8_t* mac_src, uint32_t ip_src, uint8_t* mac_dest, uint3
 
 	return buf;
 }
-

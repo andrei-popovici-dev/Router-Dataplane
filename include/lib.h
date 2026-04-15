@@ -100,7 +100,7 @@ int parse_arp_table(char *path, struct arp_table_entry *arp_table);
 */
 struct arp_table_entry *get_mac_entry(uint32_t given_ip, struct arp_table_entry* mac_table, int mac_table_len);
 
-char* make_arp_reply(uint8_t* mac_src, uint32_t ip_src, uint8_t* mac_dest, uint32_t ip_dest);
+char* make_arp_msg(uint8_t* mac_src, uint32_t ip_src, uint8_t* mac_dest, uint32_t ip_dest, uint16_t opcode);
 
 void init(char *argv[], int argc);
 
