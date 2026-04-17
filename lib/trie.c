@@ -17,12 +17,17 @@ struct trie_node *add_node(struct trie_node *head, struct route_table_entry *rte
 	uint32_t ip = ntohl(rte->prefix);
 	uint32_t mask = ntohl(rte->mask);
 
-	int mask_len = (mask == 0) ? 0 : __builtin_popcount(mask); // TODO: alta expresie de preferat
+	int mask_len = 0;
+	uint32_t temp_mask = mask;
 
-	// while (mask != 0) {
-	//     mask_len++;
-	//     mask >>= 1;
-	// }
+	while (temp_mask != 0)
+	{
+		if (temp_mask & 1)
+		{
+			mask_len++;
+		}
+		temp_mask >>= 1;
+	}
 
 	if (head == NULL)
 	{

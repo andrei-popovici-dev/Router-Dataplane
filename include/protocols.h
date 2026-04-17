@@ -23,6 +23,7 @@
 
 #define ICMP_DEST_UNREACHABLE 3
 #define ICMP_TLE 11
+#define ICMP_ECHO_REPLY 0
 
 // IP Protocols
 

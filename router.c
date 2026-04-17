@@ -19,9 +19,9 @@ void complete_ip_hdr_fields(struct ip_hdr *ip_hdr, uint32_t saddr, uint32_t dadd
 	ip_hdr->ihl = 5;
 	ip_hdr->id = htons(4);
 	ip_hdr->proto = IPPROTO_ICMP;
-	ip_hdr->tot_len = len + sizeof(struct ip_hdr);
+	ip_hdr->tot_len = htons(len + sizeof(struct ip_hdr));
 	ip_hdr->checksum = 0;
-	ip_hdr->checksum = checksum(ip_hdr, sizeof(struct ip_hdr));
+	ip_hdr->checksum = htons(checksum((uint16_t *)ip_hdr, sizeof(struct ip_hdr)));
 }
 
 void send_arp_broadcast(int router_interface, uint32_t searched_ip)
@@ -63,19 +63,55 @@ void send_arp_reply(int router_interface, struct arp_hdr *arp_hdr)
 	free(buffer);
 }
 
-void send_error_icmp_packet(int router_interface, struct ip_hdr *pck_ip_hdr, struct ether_hdr *pck_ether_hdr, uint8_t icmp_type, uint8_t *pck_data)
+void send_error_icmp_packet(int router_interface, struct ether_hdr *pck_ether_hdr,
+							struct ip_hdr *pck_ip_hdr, uint8_t icmp_type, uint8_t *pck_data, int pck_size)
 {
-	void *buffer = calloc(1, sizeof(struct ether_hdr) + sizeof(struct ip_hdr) + sizeof(struct icmp_hdr) + sizeof(struct ip_hdr) + 8);
-	struct ether_hdr *reply_ether_hdr = buffer;
-	struct ip_hdr *reply_ip_hdr = (buffer + sizeof(struct ether_hdr));
-	struct icmp_hdr *reply_icmp_hdr = (buffer + sizeof(struct ether_hdr) + sizeof(struct ip_hdr));
-	struct ip_hdr *reply_pck_ip_hdr = (buffer + sizeof(struct ether_hdr) + sizeof(struct ip_hdr) + sizeof(struct icmp_hdr));
+	int len = sizeof(struct ether_hdr) + sizeof(struct ip_hdr) + sizeof(struct icmp_hdr) + sizeof(struct ip_hdr) + pck_size;
+	char *buffer = calloc(1, len);
+	struct ether_hdr *reply_ether_hdr = (struct ether_hdr *)buffer;
+	struct ip_hdr *reply_ip_hdr = (struct ip_hdr *)(buffer + sizeof(struct ether_hdr));
+	struct icmp_hdr *reply_icmp_hdr = (struct icmp_hdr *)(buffer + sizeof(struct ether_hdr) + sizeof(struct ip_hdr));
+	struct ip_hdr *reply_pck_ip_hdr = (struct ip_hdr *)(buffer + sizeof(struct ether_hdr) + sizeof(struct ip_hdr) + sizeof(struct icmp_hdr));
 
 	reply_icmp_hdr->mtype = icmp_type;
 	reply_icmp_hdr->mcode = 0;
 	memcpy(reply_pck_ip_hdr, pck_ip_hdr, sizeof(struct ip_hdr));
-	memcpy((char *)reply_pck_ip_hdr + sizeof(struct ip_hdr), pck_data, 8);
-	reply_icmp_hdr->check = checksum((uint16_t *)reply_icmp_hdr, sizeof(struct icmp_hdr) + sizeof(struct ip_hdr) + 8);
+	memcpy((char *)reply_pck_ip_hdr + sizeof(struct ip_hdr), pck_data, pck_size);
+	reply_icmp_hdr->check = htons(checksum((uint16_t *)reply_icmp_hdr, sizeof(struct icmp_hdr) + sizeof(struct ip_hdr) + pck_size));
+
+	uint32_t interface_ip;
+	inet_pton(AF_INET, get_interface_ip(router_interface), &interface_ip);
+
+	complete_ip_hdr_fields(reply_ip_hdr, interface_ip, pck_ip_hdr->source_addr, sizeof(struct icmp_hdr) + sizeof(struct ip_hdr) + pck_size);
+
+	memcpy(reply_ether_hdr->ethr_dhost, pck_ether_hdr->ethr_shost, 6);
+	get_interface_mac(router_interface, reply_ether_hdr->ethr_shost);
+	reply_ether_hdr->ethr_type = htons(IP_ETHERTYPE);
+	send_to_link(len, buffer, router_interface);
+}
+
+void send_echo_icmp_packet(int router_interface, char *pck, int len)
+{
+	struct ether_hdr *reply_ether_hdr = (struct ether_hdr *)pck;
+	struct ip_hdr *reply_ip_hdr = (struct ip_hdr *)(pck + sizeof(struct ether_hdr));
+	struct icmp_hdr *reply_icmp_hdr = (struct icmp_hdr *)(pck + sizeof(struct ether_hdr) + sizeof(struct ip_hdr));
+
+	reply_icmp_hdr->mtype = ICMP_ECHO_REPLY;
+	reply_icmp_hdr->mcode = 0;
+
+	reply_icmp_hdr->check = 0;
+	uint16_t icmp_len = ntohs(reply_ip_hdr->tot_len) - sizeof(struct ip_hdr);
+	reply_icmp_hdr->check = htons(checksum((uint16_t *)reply_icmp_hdr, icmp_len));
+
+	complete_ip_hdr_fields(reply_ip_hdr, reply_ip_hdr->dest_addr, reply_ip_hdr->source_addr, reply_ip_hdr->tot_len);
+
+	uint8_t aux_mac[6];
+
+	memcpy(aux_mac, reply_ether_hdr->ethr_dhost, 6);
+	memcpy(reply_ether_hdr->ethr_dhost, reply_ether_hdr->ethr_shost, 6);
+	memcpy(reply_ether_hdr->ethr_shost, aux_mac, 6);
+
+	send_to_link(len, pck, router_interface);
 }
 
 int main(int argc, char *argv[])
@@ -122,6 +158,7 @@ int main(int argc, char *argv[])
 			if (ip_hdr->dest_addr == addr.s_addr)
 			{ // daca destinatia suntem chiar noi
 				// TODO: cream un pachet ICMP de tip "Echo Response"
+				send_echo_icmp_packet(interface, buf, len);
 				continue;
 			}
 
@@ -137,7 +174,10 @@ int main(int argc, char *argv[])
 			// verificare + actualizare TTL
 			if (ip_hdr->ttl <= 1)
 			{
-				// TODO: (ICMP Time Limit Exceded)
+				printf("Dropped : Time to Live exceded\n");
+				uint8_t pck_data[9];
+				memcpy(pck_data, (buf + sizeof(struct ether_hdr) + sizeof(struct ip_hdr)), 8);
+				send_error_icmp_packet(interface, eth_hdr, ip_hdr, ICMP_TLE, pck_data, 8);
 				continue;
 			}
 			ip_hdr->ttl -= 1;
@@ -148,7 +188,9 @@ int main(int argc, char *argv[])
 			if (entry == NULL)
 			{
 				printf("Dropped : Destination Unreachable\n");
-				// daca nu gasim nimic pachetul este aruncat iar Router-ul trimite catre sursa un pachet ICMP de tip "Destination Unreachable"
+				uint8_t pck_data[9];
+				memcpy(pck_data, (buf + sizeof(struct ether_hdr) + sizeof(struct ip_hdr)), 8);
+				send_error_icmp_packet(interface, eth_hdr, ip_hdr, ICMP_DEST_UNREACHABLE, pck_data, 8);
 				continue;
 			}
 
@@ -187,7 +229,6 @@ int main(int argc, char *argv[])
 
 			if (ntohs(arp_hdr->opcode) == ARP_REPLY)
 			{ // daca avem pachet de tip reply
-
 				if (get_mac_entry(arp_hdr->sprotoa, arp_table, arp_table_size) == NULL)
 				{
 					arp_table[arp_table_size].ip = arp_hdr->sprotoa;
@@ -242,7 +283,7 @@ int main(int argc, char *argv[])
 					arp_table[arp_table_size].ip = arp_hdr->sprotoa;
 					memcpy(arp_table[arp_table_size].mac, arp_hdr->shwa, 6);
 					arp_table_size++;
-				}
+				} // retinem adresa mac in tabela arp;
 
 				send_arp_reply(interface, arp_hdr);
 				// trimitem un pachet ARP de tip reply cu adresa MAC a noastra
